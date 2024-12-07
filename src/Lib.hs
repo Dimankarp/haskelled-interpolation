@@ -1,14 +1,14 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# OPTIONS_GHC -Wno-name-shadowing #-}
 
-module Lib where
+module Lib (program, Options (Options)) where
 
 import Control.Applicative (Alternative)
 import Control.Monad (guard, when)
 import Data.Maybe (fromJust)
+import Debug.Trace (trace)
 import Text.Printf (printf)
 import Text.Read (readMaybe)
-import Debug.Trace (trace)
 
 data (Num a) => Point a = Point
   { x :: a,
@@ -35,7 +35,16 @@ getPoint = do
 
 data Context = Context
   { linearWindow :: [Point Float],
-    lagrangeWindow :: [Point Float]
+    lagrangeWindow :: [Point Float],
+    linearActive :: Bool,
+    lagrangeActive :: Bool,
+    step :: Float
+  }
+
+data Options = Options
+  { linearFlag :: Bool,
+    lagrangeFlag :: Bool,
+    outputStep :: Float
   }
 
 linearInterpolationCoeff :: [Point Float] -> (Float, Float)
@@ -86,7 +95,7 @@ lagrangeInterpolation train =
           }
     )
   where
-    (coeffs, xs) = lagrangeInterpolationCoeff train 
+    (coeffs, xs) = lagrangeInterpolationCoeff train
 
 contextNormalizeWindows :: Context -> Context
 contextNormalizeWindows ctx@Context {linearWindow = lin, lagrangeWindow = lagr}
@@ -99,7 +108,6 @@ contextIsLinearPossible Context {linearWindow = lin} = length lin == 2
 
 contextIsLagrangePossible :: Context -> Bool
 contextIsLagrangePossible Context {lagrangeWindow = lagr} = length lagr == 4
-
 
 contextAddPoint :: Context -> Point Float -> Maybe Context
 contextAddPoint ctx p
@@ -129,32 +137,32 @@ generateXs start end step
       | curr >= end = xs ++ [curr]
       | otherwise = go (curr + step) end step (xs ++ [curr])
 
-program :: Context -> IO ()
-program ctx =
-  do
-    point <- getPoint
-    case point of
-      Nothing -> do
-        putStrLn "No points parsed - ending!"
-        return ()
-      Just p -> do
-        let newctx = contextNormalizeWindows <$> contextAddPoint ctx p
-        case newctx of
-          Just newctx -> do
-            let start = x $ head $ linearWindow newctx
-                end = x $ last $ linearWindow newctx
-            when (contextIsLinearPossible newctx) $ linear (linearWindow newctx) (generateXs start end 1)
-            let start = x $ head $ lagrangeWindow newctx
-                end = x $ last $ lagrangeWindow newctx
-            when (contextIsLagrangePossible newctx) $ lagrange (lagrangeWindow newctx) (generateXs start end 1)
-            program newctx
-          Nothing -> do
-            putStrLn "Failed to add point to window - ending!"
-            return ()
+contextFromOpts :: Options -> Context
+contextFromOpts opts =
+  Context [] [] (linearFlag opts) (lagrangeFlag opts) (outputStep opts)
 
--- case point of
---   Just a -> do
---     print a
---     program
---   Nothing ->
---     putStrLn "No points parsed - ending!"
+program :: Options -> IO ()
+program opts =
+  go $ contextFromOpts opts
+  where
+    go ctx =
+      do
+        point <- getPoint
+        case point of
+          Nothing -> do
+            putStrLn "No points parsed - ending!"
+            return ()
+          Just p -> do
+            let newctx = contextNormalizeWindows <$> contextAddPoint ctx p
+            case newctx of
+              Just newctx -> do
+                let start = x $ head $ linearWindow newctx
+                    end = x $ last $ linearWindow newctx
+                when (contextIsLinearPossible newctx) $ linear (linearWindow newctx) (generateXs start end 1)
+                let start = x $ head $ lagrangeWindow newctx
+                    end = x $ last $ lagrangeWindow newctx
+                when (contextIsLagrangePossible newctx) $ lagrange (lagrangeWindow newctx) (generateXs start end 1)
+                go newctx
+              Nothing -> do
+                putStrLn "Failed to add point to window - ending!"
+                return ()
