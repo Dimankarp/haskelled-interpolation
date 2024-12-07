@@ -5,6 +5,7 @@ module Lib where
 
 import Control.Applicative (Alternative)
 import Control.Monad (guard)
+import Data.Maybe (fromJust)
 import Text.Read (readMaybe)
 
 data (Num a) => Point a = Point
@@ -30,13 +31,37 @@ getPoint :: IO (Maybe (Point Float))
 getPoint = do
   parseInput <$> getLine
 
+data Context = Context
+  { linearWindow :: [Point Float],
+    lagrangeWindow :: [Point Float]
+  }
+
+linearCoeff :: (Fractional b) => [Point b] -> (b, b)
+linearCoeff (p1 : p2 : _) =
+  (a, b)
+  where
+    a = (y p2 - y p1) / (x p2 - x p1)
+    b = y p1 - a * x p1
+linearCoeff _ = error "linear coeff"
+
+linear :: [Point Float] -> [Float] -> [Point Float]
+linear train = map (\p -> Point {x = p, y = a * p + b})
+  where
+    (a, b) = linearCoeff train
+
 program :: IO ()
 program =
   do
-    point <- getPoint
-    case point of
-      Just a -> do
-        print a
-        program
-      Nothing ->
-        putStrLn "No points parsed - ending!"
+    point1 <- fromJust <$> getPoint
+    point2 <- fromJust <$> getPoint
+    point3 <- fromJust <$> getPoint
+    let p = linear [point1, point2] [x point3]
+        in print p
+    return ()
+
+-- case point of
+--   Just a -> do
+--     print a
+--     program
+--   Nothing ->
+--     putStrLn "No points parsed - ending!"
