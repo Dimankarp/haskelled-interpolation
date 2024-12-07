@@ -4,9 +4,11 @@
 module Lib where
 
 import Control.Applicative (Alternative)
-import Control.Monad (guard)
+import Control.Monad (guard, when)
 import Data.Maybe (fromJust)
+import Text.Printf (printf)
 import Text.Read (readMaybe)
+import Debug.Trace (trace)
 
 data (Num a) => Point a = Point
   { x :: a,
@@ -36,28 +38,119 @@ data Context = Context
     lagrangeWindow :: [Point Float]
   }
 
-linearCoeff :: (Fractional b) => [Point b] -> (b, b)
-linearCoeff (p1 : p2 : _) =
+linearInterpolationCoeff :: [Point Float] -> (Float, Float)
+linearInterpolationCoeff (p1 : p2 : _) =
   (a, b)
   where
     a = (y p2 - y p1) / (x p2 - x p1)
     b = y p1 - a * x p1
-linearCoeff _ = error "linear coeff"
+linearInterpolationCoeff _ = error "linear coeff"
 
-linear :: [Point Float] -> [Float] -> [Point Float]
-linear train = map (\p -> Point {x = p, y = a * p + b})
+linearInterpolation :: [Point Float] -> [Float] -> [Point Float]
+linearInterpolation train = map (\p -> Point {x = p, y = a * p + b})
   where
-    (a, b) = linearCoeff train
+    (a, b) = linearInterpolationCoeff train
 
-program :: IO ()
-program =
+lagrangeInterpolationCoeff :: [Point Float] -> ([Float], [Float])
+lagrangeInterpolationCoeff ps
+  | length ps < 2 = error "Not enough points for Langrange"
+  | otherwise =
+      ( zipWith
+          ( \x y ->
+              y
+                / foldr (\a nx -> if nx == x then a else a * (x - nx)) 1 xs
+          )
+          xs
+          ys,
+        xs
+      )
+  where
+    xs = map x ps
+    ys = map y ps
+
+lagrangeInterpolation :: [Point Float] -> [Float] -> [Point Float]
+lagrangeInterpolation train =
+  map
+    ( \x ->
+        Point
+          { x = x,
+            y =
+              sum $
+                zipWith
+                  ( \coeff cx ->
+                      coeff
+                        * foldr (\na ncx -> if ncx == cx then na else na * (x - ncx)) 1 xs
+                  )
+                  coeffs
+                  xs
+          }
+    )
+  where
+    (coeffs, xs) = lagrangeInterpolationCoeff train 
+
+contextNormalizeWindows :: Context -> Context
+contextNormalizeWindows ctx@Context {linearWindow = lin, lagrangeWindow = lagr}
+  | length lin > 2 = contextNormalizeWindows ctx {linearWindow = tail lin}
+  | length lagr > 4 = contextNormalizeWindows ctx {lagrangeWindow = tail lagr}
+  | otherwise = ctx
+
+contextIsLinearPossible :: Context -> Bool
+contextIsLinearPossible Context {linearWindow = lin} = length lin == 2
+
+contextIsLagrangePossible :: Context -> Bool
+contextIsLagrangePossible Context {lagrangeWindow = lagr} = length lagr == 4
+
+
+contextAddPoint :: Context -> Point Float -> Maybe Context
+contextAddPoint ctx p
+  | null (linearWindow ctx) = Just ctx {linearWindow = linearWindow ctx ++ [p], lagrangeWindow = lagrangeWindow ctx ++ [p]}
+  | xlower (last $ linearWindow ctx) p && xlower (last $ lagrangeWindow ctx) p =
+      Just $ ctx {linearWindow = linearWindow ctx ++ [p], lagrangeWindow = lagrangeWindow ctx ++ [p]}
+  | otherwise = Nothing
+
+linear :: [Point Float] -> [Float] -> IO ()
+linear train xs = do
+  putStrLn "Linear Interpolation: "
+  let pts = linearInterpolation train xs
+  foldl (\a p -> a >> printf "%10.2f %10.2f\n" (x p) (y p)) (pure ()) pts
+
+lagrange :: [Point Float] -> [Float] -> IO ()
+lagrange train xs = do
+  putStrLn "Lagrange Interpolation: "
+  let pts = lagrangeInterpolation train xs
+  foldl (\a p -> a >> printf "%10.2f %10.2f\n" (x p) (y p)) (pure ()) pts
+
+generateXs :: Float -> Float -> Float -> [Float]
+generateXs start end step
+  | start > end = []
+  | otherwise = go start end step []
+  where
+    go curr end step xs
+      | curr >= end = xs ++ [curr]
+      | otherwise = go (curr + step) end step (xs ++ [curr])
+
+program :: Context -> IO ()
+program ctx =
   do
-    point1 <- fromJust <$> getPoint
-    point2 <- fromJust <$> getPoint
-    point3 <- fromJust <$> getPoint
-    let p = linear [point1, point2] [x point3]
-        in print p
-    return ()
+    point <- getPoint
+    case point of
+      Nothing -> do
+        putStrLn "No points parsed - ending!"
+        return ()
+      Just p -> do
+        let newctx = contextNormalizeWindows <$> contextAddPoint ctx p
+        case newctx of
+          Just newctx -> do
+            let start = x $ head $ linearWindow newctx
+                end = x $ last $ linearWindow newctx
+            when (contextIsLinearPossible newctx) $ linear (linearWindow newctx) (generateXs start end 1)
+            let start = x $ head $ lagrangeWindow newctx
+                end = x $ last $ lagrangeWindow newctx
+            when (contextIsLagrangePossible newctx) $ lagrange (lagrangeWindow newctx) (generateXs start end 1)
+            program newctx
+          Nothing -> do
+            putStrLn "Failed to add point to window - ending!"
+            return ()
 
 -- case point of
 --   Just a -> do
