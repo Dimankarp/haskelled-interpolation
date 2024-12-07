@@ -35,6 +35,9 @@ ghc-options:
 
 library:
   source-dirs: src
+  dependencies:
+    - text
+    - optparse-applicative
 
 executables:
   haskelled-interpolation-exe:
@@ -46,7 +49,8 @@ executables:
     - -with-rtsopts=-N
     dependencies:
     - haskelled-interpolation
-
+    - text
+    - optparse-applicative
 tests:
   haskelled-interpolation-test:
     main:                Spec.hs
