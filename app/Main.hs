@@ -16,7 +16,6 @@ optionsParser =
       auto
       (long "step" <> short 's' <> metavar "FLOAT" <> help "Step size" <> value 1.0 <> showDefault)
 
--- Main function to parse the options and use them
 main :: IO ()
 main = do
   opts <- execParser optsParserInfo

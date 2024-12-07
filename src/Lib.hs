@@ -45,7 +45,7 @@ data Options = Options
   { linearFlag :: Bool,
     lagrangeFlag :: Bool,
     outputStep :: Float
-  }
+  } deriving (Show)
 
 linearInterpolationCoeff :: [Point Float] -> (Float, Float)
 linearInterpolationCoeff (p1 : p2 : _) =
@@ -138,7 +138,7 @@ generateXs start end step
       | otherwise = go (curr + step) end step (xs ++ [curr])
 
 contextFromOpts :: Options -> Context
-contextFromOpts opts =
+contextFromOpts opts = trace (show opts)
   Context [] [] (linearFlag opts) (lagrangeFlag opts) (outputStep opts)
 
 program :: Options -> IO ()
@@ -158,10 +158,10 @@ program opts =
               Just newctx -> do
                 let start = x $ head $ linearWindow newctx
                     end = x $ last $ linearWindow newctx
-                when (contextIsLinearPossible newctx) $ linear (linearWindow newctx) (generateXs start end 1)
+                when (contextIsLinearPossible newctx && linearActive newctx) $ linear (linearWindow newctx) (generateXs start end (step newctx))
                 let start = x $ head $ lagrangeWindow newctx
                     end = x $ last $ lagrangeWindow newctx
-                when (contextIsLagrangePossible newctx) $ lagrange (lagrangeWindow newctx) (generateXs start end 1)
+                when (contextIsLagrangePossible newctx && lagrangeActive newctx) $ lagrange (lagrangeWindow newctx) (generateXs start end  (step newctx))
                 go newctx
               Nothing -> do
                 putStrLn "Failed to add point to window - ending!"
